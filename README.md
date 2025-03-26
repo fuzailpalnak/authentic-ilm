@@ -92,8 +92,7 @@ uvicorn main:app --reload
         }
       ]
     }
-  ]
-}```
+  ]}```
   
 - **Get Courses by Topic**
   - GET `/courses/topic/{topic_name}`
