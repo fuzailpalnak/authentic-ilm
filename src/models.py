@@ -37,3 +37,9 @@ class CourseResponse(BaseModel):
     description: str
     professor: dict
     sessions: list
+
+
+class SessionRequest(BaseModel):
+    professor_name: str
+    topic_name: str
+    sessions: List[Session]
