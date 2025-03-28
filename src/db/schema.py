@@ -22,6 +22,7 @@ class Pathway(Base):
     name = Column(String(255), unique=True, nullable=False)
 
     professors = relationship("Professor", back_populates="pathway")
+    courses = relationship("Course", back_populates="pathway")
 
 
 class Professor(Base):
@@ -59,10 +60,13 @@ class Course(Base):
     topic_id = Column(
         String(10), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False
     )
-
+    pathway_id = Column(
+        String(10), ForeignKey("pathway.id", ondelete="CASCADE"), nullable=False
+    )
     professor = relationship("Professor", back_populates="courses")
     topic = relationship("Topic", back_populates="courses")
     sessions = relationship("Session", back_populates="course")
+    pathway = relationship("Pathway", back_populates="courses")
 
 
 class Session(Base):

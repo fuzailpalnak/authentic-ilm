@@ -41,7 +41,59 @@ class EntityAlreadyExistsError(Exception):
 
 
 class DatabaseError(Exception):
-    """Custom exception for database-related errors."""
+    """_summary_
+
+    Raises:
+        Exception (_type_): _description_
+
+    Args:
+        Exception (_type_): _description_
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+class CourseInsertFailure(Exception):
+    """_summary_
+
+    Raises:
+        Exception (_type_): _description_
+
+    Args:
+        Exception (_type_): _description_
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+class SessionInsertFailure(Exception):
+    """_summary_
+
+    Raises:
+        Exception (_type_): _description_
+
+    Args:
+        Exception (_type_): _description_
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+class RequestFailure(Exception):
+    """_summary_
+
+    Raises:
+        Exception (_type_): _description_
+
+    Args:
+        Exception (_type_): _description_
+    """
 
     def __init__(self, message: str):
         self.message = message

@@ -40,6 +40,7 @@ class CourseResponse(BaseModel):
 
 
 class SessionRequest(BaseModel):
+    pathway_name: str
     professor_name: str
     topic_name: str
     sessions: List[Session]

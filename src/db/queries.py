@@ -1,6 +1,8 @@
 import json
 import re
 import uuid
+import traceback
+
 from typing import AsyncGenerator, Union, Any
 
 from pydantic import BaseModel
@@ -13,21 +15,23 @@ from src.db.schema import Professor, Pathway, Topic, Course, Session, Media
 from src.exceptions import (
     CourseAlreadyExistsError,
     CourseNotFoundError,
-    EntityAlreadyExistsError,
     DatabaseError,
     EntityNotFoundError,
+    RequestFailure,
 )
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from loguru import logger
 
-async def get_or_create_entity(db: AsyncSession, model: Any, name: str, *kwargs):
+
+async def get_or_create_entity(db: AsyncSession, model: Any, name: str, **kwargs):
     """Fetch an entity by name or insert it if it doesn't exist."""
     try:
         entity = await _fetch_entity(db, model, name)
         return entity
     except EntityNotFoundError:
-        entity = await _insert_entity(db, model, name, *kwargs)
+        entity = await _insert_entity(db, model, name, **kwargs)
         return entity
 
 
@@ -48,7 +52,7 @@ async def _insert_entity(
         raise DatabaseError(f"Error inserting {model.__name__}: {str(e)}")
     except Exception as e:
         await db.rollback()
-        raise e
+        raise RequestFailure(f"Failed to insert {model.__name__}")
 
 
 async def _fetch_entity(
@@ -66,7 +70,7 @@ async def _fetch_entity(
             f"Error fetching {model.__name__} by name '{name}': {str(e)}"
         )
     except Exception as e:
-        raise e
+        raise RequestFailure(f"Failed to fetch {model.__name__}")
 
 
 def generate_id(name: str) -> str:
@@ -85,7 +89,7 @@ async def stream_courses_by_filter(
     try:
         # Determine model and fetch entity by filter type
         model = Professor if filter_by == "professor" else Topic
-        entity = await _fetch_entity(db, model, value)
+        entity = await _fetch_entity(db, model, value.replace(" ", ""))
 
         # Fetch courses related to the entity
         result = await db.execute(
@@ -103,6 +107,9 @@ async def stream_courses_by_filter(
             yield await course_to_response(course)
 
     except ValueError as e:
+        yield ErrorResponse(error=str(e)).model_dump_json() + "\n"
+
+    except Exception as e:
         yield ErrorResponse(error=str(e)).model_dump_json() + "\n"
 
 
@@ -137,8 +144,8 @@ async def stream_courses_on_prof_and_topic(
     """Stream courses based on professor name and topic name."""
     try:
         # Fetch professor and topic
-        professor = await _fetch_entity(db, Professor, professor_name)
-        topic = await _fetch_entity(db, Topic, topic_name)
+        professor = await _fetch_entity(db, Professor, professor_name.replace(" ", ""))
+        topic = await _fetch_entity(db, Topic, topic_name.replace(" ", ""))
 
         # Fetch courses that match the professor and topic IDs
         result = await db.execute(
@@ -158,21 +165,29 @@ async def stream_courses_on_prof_and_topic(
     except ValueError as e:
         yield ErrorResponse(error=str(e)).model_dump_json() + "\n"
 
+    except Exception as e:
+        yield ErrorResponse(error=str(e)).model_dump_json() + "\n"
+
 
 async def insert_course(db: AsyncSession, request: CourseRequest):
     """Insert a new course with associated professor, topic, and pathway."""
     try:
 
-        pathway = await get_or_create_entity(db, Pathway, request.pathway_name)
+        pathway = await get_or_create_entity(
+            db, Pathway, request.pathway_name.replace(" ", "")
+        )
         professor = await get_or_create_entity(
             db,
-            request.professor_name,
+            Professor,
+            name=request.professor_name.replace(" ", "").lower(),
             email=request.professor_email,
             pathway_id=pathway.id,
         )
-        topic = await get_or_create_entity(db, Topic, request.topic_name)
+        topic = await get_or_create_entity(
+            db, Topic, request.topic_name.replace(" ", "")
+        )
 
-        course_id = f"{professor.id}-{topic.id}"
+        course_id = f"{pathway.id}-{professor.id}-{topic.id}"
 
         existing_course = await db.execute(
             select(Course).filter(Course.id == course_id)
@@ -188,6 +203,7 @@ async def insert_course(db: AsyncSession, request: CourseRequest):
             description=request.course_description,
             professor_id=professor.id,
             topic_id=topic.id,
+            pathway_id=pathway.id,
         )
         db.add(course)
 
@@ -220,16 +236,22 @@ async def insert_course(db: AsyncSession, request: CourseRequest):
         return {"message": "Course added successfully", "course_id": course_id}
     except Exception as e:
         await db.rollback()
-        raise e
+        logger.error(f"Error inserting course: {str(e)}")
+        raise RequestFailure(f"Failed to Insert Course {request.course_title}")
 
 
 async def insert_session(db: AsyncSession, request: SessionRequest):
     """Add new sessions and media to an existing course."""
     try:
-        professor = await _fetch_entity(db, Professor, request.professor_name)
-        topic = await _fetch_entity(db, Topic, request.topic_name)
+        pathway = await _fetch_entity(
+            db, Pathway, request.pathway_name.replace(" ", "")
+        )
+        professor = await _fetch_entity(
+            db, Professor, request.professor_name.replace(" ", "")
+        )
+        topic = await _fetch_entity(db, Topic, request.topic_name.replace(" ", ""))
 
-        course_id = f"{professor.id}-{topic.id}"
+        course_id = f"{pathway.id}--{professor.id}-{topic.id}"
 
         existing_course = await db.execute(
             select(Course).filter(Course.id == course_id)
@@ -273,4 +295,4 @@ async def insert_session(db: AsyncSession, request: SessionRequest):
 
     except Exception as e:
         await db.rollback()
-        raise e
+        raise RequestFailure(f"Failed to add sessions and media to {course_id}")
